@@ -47,7 +47,8 @@ uint8_t node = 0;
 
 static WiFiClient wifiClient;
 
-void getPosition(char* str, int* pos1, int* pos2)
+// Function to find the positions of commas in a string
+void FindCommaPositions(char* str, int* pos1, int* pos2)
 {
   for(int i = 0; i < strlen(str); i++)
   {
@@ -67,7 +68,16 @@ void getPosition(char* str, int* pos1, int* pos2)
   }
 }
 
-void storeValues(char* str, char* temp, char* lng, char* lat,int pos1,int pos2)
+/**
+* @brief Function to extract and store values between commas in separate arrays
+* @param str The input string
+* @param temp The array to store the value before the first comma
+* @param lng The array to store the value between the first and second commas
+* @param lat The array to store the value after the second comma
+* @param pos1 The position of the first comma
+* @param pos2 The position of the second comma
+*/
+void ParseData(char* str, char* temp, char* lng, char* lat,int pos1,int pos2)
 {
   int len = strlen(str);
   for(int i = 0; i < pos1; i++)
@@ -174,8 +184,8 @@ void onReceive(int packetSize) {
     
     Serial.println("--Data Received from node 1");
     Serial.println(rxData);
-    getPosition(rxData,&pos1,&pos2);
-    storeValues(rxData,rxData1.temp,rxData1.lng,rxData1.lat,pos1,pos2);
+    FindCommaPositions(rxData,&pos1,&pos2);
+    ParseData(rxData,rxData1.temp,rxData1.lng,rxData1.lat,pos1,pos2);
     StringToFloat(rxData1.temp,&node1Data.temp);
     StringToFloat(rxData1.lng,&node1Data.lng);
     StringToFloat(rxData1.lat,&node1Data.lat);
@@ -190,8 +200,8 @@ void onReceive(int packetSize) {
   {
     Serial.println("--Data received from node 2");
     Serial.println(rxData);
-    getPosition(rxData,&pos1,&pos2);
-    storeValues(rxData,rxData2.temp,rxData2.lng,rxData2.lat,pos1,pos2);
+    FindCommaPositions(rxData,&pos1,&pos2);
+    ParseData(rxData,rxData2.temp,rxData2.lng,rxData2.lat,pos1,pos2);
     StringToFloat(rxData2.temp,&node2Data.temp);
     StringToFloat(rxData2.lng,&node2Data.lng);
     StringToFloat(rxData2.lat,&node2Data.lat);
