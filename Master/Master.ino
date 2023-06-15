@@ -5,22 +5,22 @@
 #include "numeric_lib.h"
 
 #define TX_SIZE         1
-#define API_KEY       "AAA"
-#define CHANNEL_ID    2333 
-#define WIFI_SSID     "aaa"
-#define WIFI_PWORD    "XXX"
-
-
+#define API_KEY       "EEX0AFZ56X4T1XUD"
+#define CHANNEL_ID    2146562 
 
 const int csPin = 15;          
 const int resetPin = 16;     
-const int irqPin = 2;         
+const int irqPin = 2;  
+
+const char* ssid = "A9 Pro";
+const char* pword = "weslena99#"; 
 
 typedef struct
 {
   float temp;
   float lng;
   float lat;
+  float bpm;
 }SensorData_t;
 
 typedef struct
@@ -28,6 +28,7 @@ typedef struct
   char temp[10];
   char lng[10];
   char lat[10];
+  char bpm[10];
 }StrData_t;
          
 byte localAddress = 0xBB;     
@@ -48,7 +49,7 @@ uint8_t node = 0;
 static WiFiClient wifiClient;
 
 // Function to find the positions of commas in a string
-void FindCommaPositions(char* str, int* pos1, int* pos2)
+void FindCommaPositions(char* str, int* pos1, int* pos2, int* pos3)
 {
   for(int i = 0; i < strlen(str); i++)
   {
@@ -66,6 +67,14 @@ void FindCommaPositions(char* str, int* pos1, int* pos2)
         break;
     }
   }
+  for(int k = *pos2 + 1; k < strlen(str); k++)
+  {
+    if(str[k] == ',')
+    {
+        *pos3 = k;
+        break;
+    }
+  }
 }
 
 /**
@@ -77,7 +86,7 @@ void FindCommaPositions(char* str, int* pos1, int* pos2)
 * @param pos1 The position of the first comma
 * @param pos2 The position of the second comma
 */
-void ParseData(char* str, char* temp, char* lng, char* lat,int pos1,int pos2)
+void ParseData(char* str, char* temp, char* lng, char* lat,char* bpm,int pos1,int pos2,int pos3)
 {
   int len = strlen(str);
   for(int i = 0; i < pos1; i++)
@@ -88,9 +97,13 @@ void ParseData(char* str, char* temp, char* lng, char* lat,int pos1,int pos2)
   {
     lng[j-(pos1 + 1)] = str[j];
   }
-  for(int k = pos2 + 1; k < len; k++)
+  for(int k = pos2 + 1; k < pos3; k++)
   {
     lat[k-(pos2 + 1)] = str[k];
+  }
+  for(int l = pos3 + 1; l < len; l++)
+  {
+    bpm[l-(pos3 + 1)] = str[l];
   }
 }
 
@@ -107,19 +120,20 @@ void setup() {
   lastSendTime = 0;
   prevUploadTime = 0;
   WiFi.mode(WIFI_STA);
-  ThingSpeak.begin(wifiClient);
+  WiFi.begin(ssid, pword);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void loop() {
-  if(WiFi.status() != WL_CONNECTED)
-  {
-    while(WiFi.status() != WL_CONNECTED)
-    {
-      WiFi.begin(WIFI_SSID,WIFI_PWORD);
-      delay(500);
-    }
-    Serial.println("Connected");
-  }
   if (millis() - lastSendTime > interval) {
     sendMessage(query,Node[node]);
     node = (node + 1) % 2;
@@ -136,7 +150,9 @@ void sendMessage(uint8_t data, uint8_t addr) {
   LoRa.write(localAddress);
   LoRa.write(TX_SIZE); //Message length
   LoRa.write(data); 
-  LoRa.endPacket();        
+  LoRa.endPacket();  
+
+  Serial.println("Query sent");
 }
 
 void onReceive(int packetSize) {
@@ -145,12 +161,12 @@ void onReceive(int packetSize) {
   // read packet header bytes:
   int recipient = LoRa.read();          // recipient address
   byte sender = LoRa.read();            // sender address
-  byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
 
   char rxData[100] = {0};
   int pos1;
   int pos2;
+  int pos3;
   int i = 0;
 
   while (LoRa.available()) 
@@ -169,69 +185,69 @@ void onReceive(int packetSize) {
     Serial.println("This message is not for me.");
     return;                          
   }
-//  // if message is for this device, or broadcast, print details:
-//  Serial.println("Received from: 0x" + String(sender, HEX));
-//  Serial.println("Sent to: 0x" + String(recipient, HEX));
-//  Serial.println("Message ID: " + String(incomingMsgId));
-//  Serial.println("Message length: " + String(incomingLength));
-//  Serial.println("Message: " + incoming);
-//  Serial.println("RSSI: " + String(LoRa.packetRssi()));
-//  Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
 
   if(sender == node1Addr)
   {
-    
     Serial.println("--Data Received from node 1");
     Serial.println(rxData);
-    FindCommaPositions(rxData,&pos1,&pos2);
-    ParseData(rxData,rxData1.temp,rxData1.lng,rxData1.lat,pos1,pos2);
+    FindCommaPositions(rxData,&pos1,&pos2,&pos3);
+    ParseData(rxData,rxData1.temp,rxData1.lng,rxData1.lat,rxData1.bpm,pos1,pos2,pos3);
+    
     StringToFloat(rxData1.temp,&node1Data.temp);
     StringToFloat(rxData1.lng,&node1Data.lng);
     StringToFloat(rxData1.lat,&node1Data.lat);
+    StringToFloat(rxData1.bpm,&node1Data.bpm);
     Serial.print("Temp:");
     Serial.println(node1Data.temp);
     Serial.print("Lng:");
     Serial.println(node1Data.lng);
     Serial.print("Lat:");
-    Serial.println(node1Data.lat);  
+    Serial.println(node1Data.lat); 
+    Serial.print("BPM:");
+    Serial.println(node1Data.bpm); 
   }
   else if(sender == node2Addr)
   {
     Serial.println("--Data received from node 2");
     Serial.println(rxData);
-    FindCommaPositions(rxData,&pos1,&pos2);
-    ParseData(rxData,rxData2.temp,rxData2.lng,rxData2.lat,pos1,pos2);
+    FindCommaPositions(rxData,&pos1,&pos2,&pos3);
+    ParseData(rxData,rxData2.temp,rxData2.lng,rxData2.lat,rxData2.bpm,pos1,pos2,pos3);
+    
     StringToFloat(rxData2.temp,&node2Data.temp);
     StringToFloat(rxData2.lng,&node2Data.lng);
     StringToFloat(rxData2.lat,&node2Data.lat);
+    StringToFloat(rxData2.bpm,&node2Data.bpm);
     Serial.print("Temp:");
     Serial.println(node2Data.temp);
     Serial.print("Lng:");
     Serial.println(node2Data.lng);
     Serial.print("Lat:");
     Serial.println(node2Data.lat); 
+    Serial.print("BPM:");
+    Serial.println(node2Data.bpm);
   }
 
   if(millis() - prevUploadTime >= 25000)
   {
     //Upload to thingspeak
-    ThingSpeak.setField(1,node1Data.temp);
-    ThingSpeak.setField(2,node1Data.lng);
-    ThingSpeak.setField(3,node1Data.lat);
-    //ThingSpeak.setField(4,node1Data.temp);
-    ThingSpeak.setField(5,node2Data.temp);
-    ThingSpeak.setField(6,node2Data.lng);
-    ThingSpeak.setField(7,node2Data.lat);
-    //ThingSpeak.setField(8,node2Data.temp);
-    if(ThingSpeak.writeFields(CHANNEL_ID,API_KEY) == 200)
-    {
-      Serial.println("SUCCESS: Data sent to ThingSpeak successfully");
-    }
-    else
-    {
-      Serial.println("ERROR: Sending to ThingSpeak failed");
-    }
+//    ThingSpeak.setField(1,node1Data.temp);
+//    ThingSpeak.setField(2,node1Data.bpm);
+//    ThingSpeak.setField(3,node1Data.lat);
+//    ThingSpeak.setField(4,node1Data.lng);
+//    ThingSpeak.setField(5,node2Data.temp);
+//    ThingSpeak.setField(6,node2Data.bpm);
+//    ThingSpeak.setField(7,node2Data.lat);
+//    ThingSpeak.setField(8,node2Data.lng);
+//      ThingSpeak.writeField(CHANNEL_ID,1,node1Data.temp,API_KEY);
+//    if(ThingSpeak.writeFields(CHANNEL_ID,API_KEY) == 200)
+//    {
+//      Serial.println("SUCCESS: Data sent to ThingSpeak successfully");
+//    }
+//    else
+//    {
+//      Serial.println("ERROR: Sending to ThingSpeak failed");
+//    }
     prevUploadTime = millis();
   }
 }
