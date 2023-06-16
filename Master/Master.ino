@@ -131,6 +131,7 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  ThingSpeak.begin(wifiClient);
 }
 
 void loop() {
@@ -231,23 +232,22 @@ void onReceive(int packetSize) {
   if(millis() - prevUploadTime >= 25000)
   {
     //Upload to thingspeak
-//    ThingSpeak.setField(1,node1Data.temp);
-//    ThingSpeak.setField(2,node1Data.bpm);
-//    ThingSpeak.setField(3,node1Data.lat);
-//    ThingSpeak.setField(4,node1Data.lng);
-//    ThingSpeak.setField(5,node2Data.temp);
-//    ThingSpeak.setField(6,node2Data.bpm);
-//    ThingSpeak.setField(7,node2Data.lat);
-//    ThingSpeak.setField(8,node2Data.lng);
-//      ThingSpeak.writeField(CHANNEL_ID,1,node1Data.temp,API_KEY);
-//    if(ThingSpeak.writeFields(CHANNEL_ID,API_KEY) == 200)
-//    {
-//      Serial.println("SUCCESS: Data sent to ThingSpeak successfully");
-//    }
-//    else
-//    {
-//      Serial.println("ERROR: Sending to ThingSpeak failed");
-//    }
+    ThingSpeak.setField(1,node1Data.temp);
+    ThingSpeak.setField(2,node1Data.bpm);
+    ThingSpeak.setField(3,node1Data.lat);
+    ThingSpeak.setField(4,node1Data.lng);
+    ThingSpeak.setField(5,node2Data.temp);
+    ThingSpeak.setField(6,node2Data.bpm);
+    ThingSpeak.setField(7,node2Data.lat);
+    ThingSpeak.setField(8,node2Data.lng);
+    if(ThingSpeak.writeFields(CHANNEL_ID,API_KEY) == 200)
+    {
+      Serial.println("SUCCESS: Data sent to ThingSpeak successfully");
+    }
+    else
+    {
+      Serial.println("ERROR: Sending to ThingSpeak failed");
+    }
     prevUploadTime = millis();
   }
 }
