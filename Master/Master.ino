@@ -2,6 +2,7 @@
 #include <SPI.h>             
 #include <LoRa.h>
 #include <ThingSpeak.h>
+#include <LiquidCrystal_I2C.h>
 #include "numeric_lib.h"
 
 #define TX_SIZE         1
@@ -47,6 +48,7 @@ byte Node[2] = {node1Addr,node2Addr};
 uint8_t node = 0;
 
 static WiFiClient wifiClient;
+LiquidCrystal_I2C lcd(0x27,16,2);
 
 // Function to find the positions of commas in a string
 void FindCommaPositions(char* str, int* pos1, int* pos2, int* pos3)
@@ -119,6 +121,17 @@ void setup() {
   Serial.println("LoRa init succeeded."); 
   lastSendTime = 0;
   prevUploadTime = 0;
+  //Start-up Message
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+  lcd.print("Health Monitor");
+  delay(2000);
+  lcd.clear();
+  lcd.print("1: OKAY ");
+  lcd.setCursor(0,1);
+  lcd.print("2: OKAY ");
+  
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pword);
 
@@ -199,6 +212,7 @@ void onReceive(int packetSize) {
     StringToFloat(rxData1.lng,&node1Data.lng);
     StringToFloat(rxData1.lat,&node1Data.lat);
     StringToFloat(rxData1.bpm,&node1Data.bpm);
+    node1Data.temp = node1Data.temp * 1.28;
     Serial.print("Temp:");
     Serial.println(node1Data.temp);
     Serial.print("Lng:");
@@ -207,6 +221,21 @@ void onReceive(int packetSize) {
     Serial.println(node1Data.lat); 
     Serial.print("BPM:");
     Serial.println(node1Data.bpm); 
+    if(node1Data.temp < 35.0 || node1Data.bpm < 20)
+    {
+      lcd.setCursor(3,0);
+      lcd.print("CRITICAL");
+    }
+    else if(node1Data.temp > 38.0 || node1Data.bpm < 20)
+    {
+      lcd.setCursor(3,0);
+      lcd.print("CRITICAL");
+    }
+    else
+    {
+      lcd.setCursor(3,0);
+      lcd.print("OKAY     ");
+    } 
   }
   else if(sender == node2Addr)
   {
@@ -219,6 +248,7 @@ void onReceive(int packetSize) {
     StringToFloat(rxData2.lng,&node2Data.lng);
     StringToFloat(rxData2.lat,&node2Data.lat);
     StringToFloat(rxData2.bpm,&node2Data.bpm);
+    node2Data.temp = node2Data.temp * 1.28;
     Serial.print("Temp:");
     Serial.println(node2Data.temp);
     Serial.print("Lng:");
@@ -227,6 +257,21 @@ void onReceive(int packetSize) {
     Serial.println(node2Data.lat); 
     Serial.print("BPM:");
     Serial.println(node2Data.bpm);
+    if(node2Data.temp < 35.0 || node2Data.bpm < 20)
+    {
+      lcd.setCursor(3,1);
+      lcd.print("CRITICAL");
+    }
+    else if(node2Data.temp > 38.0 || node2Data.bpm < 20)
+    {
+      lcd.setCursor(3,1);
+      lcd.print("CRITICAL");
+    }
+    else
+    {
+      lcd.setCursor(3,1);
+      lcd.print("OKAY     ");
+    } 
   }
 
   if(millis() - prevUploadTime >= 25000)
