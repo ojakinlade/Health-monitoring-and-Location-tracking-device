@@ -6,6 +6,7 @@
 #include "numeric_lib.h"
 #include "MAX30105.h"
 #include "heartRate.h"
+#include "button.h"
 
 #define RX_SIZE   1
 #define gpsModule Serial1
@@ -18,6 +19,9 @@ const int resetPin = PB0;
 const int irqPin = PA1;         
 const int LM35Pin = PA2;
 const byte RATE_SIZE = 4;
+const int BTN0 = PB3;
+const int BTN1 = PB4;
+const int BTN2 = PB5;
 const unsigned long AVERAGE_INTERVAL = 5000; // Calculate average every 5 seconds
 
 byte rates[RATE_SIZE]; //Array of heart rates
@@ -27,7 +31,6 @@ float beatsPerMinute;
 int beatAvg;
 uint32_t lastAverageTime = 0;
 bool queryReceived = false;
-
 
 typedef struct
 {
@@ -43,6 +46,7 @@ typedef struct
   char lng[10];
   char lat[10];
   char bpm[10];
+  char code[5];
 }StrData_t;
 
 String outgoing;              
@@ -51,9 +55,20 @@ byte destination = 0xBB;      // Master address
 long lastSendTime = 0;       
 int interval = 2000; 
 SensorData_t sensorData;        
-StrData_t txData;
+StrData_t txData = {0};
 char dataToSend[100] = {0};
 
+Button_t btn0 = {BTN0,BUTTON_NOT_PRESSED,false}; 
+Button_t btn1 = {BTN1,BUTTON_NOT_PRESSED,false}; 
+Button_t btn2 = {BTN2,BUTTON_NOT_PRESSED,false}; 
+BUTTON button0(&btn0);
+BUTTON button1(&btn1);
+BUTTON button2(&btn2);
+
+//RTOS Handle(s)
+TaskHandle_t buttonTaskHandle;
+TaskHandle_t nodeTaskHandle;
+QueueHandle_t buttonToNodeQueue;
 
 void sendMessage(char* outgoing)
 {
@@ -115,11 +130,79 @@ static void vGPS_Task(void* pvParameters)
   }
 }
 
-static void vNodeRx_Task(void* pvParameters)
+static void vNode_Task(void* pvParameters)
 {
+  static char morse_code[5];
   for(;;)
   {
+    if(xQueueReceive(buttonToNodeQueue,morse_code,0) == pdPASS)
+    {
+      Serial.println("Node task received data successfully");
+      strncpy(txData.code, morse_code, sizeof(txData.code) - 1);
+      txData.code[sizeof(txData.code) - 1] = '\0';
+    }
     onReceive(LoRa.parsePacket());
+  }
+}
+
+static void vButton_Task(void* pvParameters)
+{
+  int len = 0;
+  static char morse_code[5] = "----";
+  for(;;)
+  {
+    button0.Poll(&btn0);
+    button1.Poll(&btn1);
+    button2.Poll(&btn2);
+
+    if(btn0.isDebounced && !btn0.prevPressed)
+    {
+      btn0.prevPressed = true;
+      Serial.println("btn 0 pressed");
+      if(len < 4)
+      {
+        morse_code[len++] = '0';
+      } 
+    }
+    else if(!btn0.isDebounced && btn0.prevPressed)
+    {
+      btn0.prevPressed = false;
+    }
+    if(btn1.isDebounced && !btn1.prevPressed)
+    {
+      btn1.prevPressed = true;
+      Serial.println("btn 1 pressed");
+      if(len < 4)
+      {
+        morse_code[len++] = '1';
+      }
+    }
+    else if(!btn1.isDebounced && btn1.prevPressed)
+    {
+      btn1.prevPressed = false;
+    }
+    if(btn2.isDebounced && !btn2.prevPressed)
+    {
+      btn2.prevPressed = true;
+      Serial.println(txData.code);
+      if(xQueueSend(buttonToNodeQueue,morse_code,0) == pdPASS)
+      {
+        Serial.println("[SUCCESS]Data sent to node task successfully");
+      }
+      else
+      {
+        Serial.println("[FAILURE]Data failed to send to node task");
+      }
+      len = 0;
+      for(int i = 0; i < 4; i++)
+      {
+        morse_code[i] = '-';
+      }
+    }
+    else if(!btn2.isDebounced && btn2.prevPressed)
+    {
+      btn2.prevPressed = false;
+    }
   }
 }
 
@@ -141,15 +224,11 @@ void onReceive(int packetSize)
     Serial.println("This message is not for me.");
     return;                         
   }
-  // if message is for this device, or broadcast, print details:
-  Serial.println("Received from: 0x" + String(sender, HEX));
-  Serial.println("Sent to: 0x" + String(recipient, HEX));
-  Serial.println("Message length: " + String(incomingLength));
   Serial.print("Incoming message: ");
   Serial.println(incoming);
-  Serial.println("RSSI: " + String(LoRa.packetRssi()));
-  Serial.println("Snr: " + String(LoRa.packetSnr()));
-  Serial.println();
+
+  Serial.print("Morse code:");
+  Serial.print(txData.code);
 
   Get_SensorData(&sensorData);  
     
@@ -165,18 +244,24 @@ void onReceive(int packetSize)
   strcat(dataToSend,txData.lat);
   strcat(dataToSend,",");
   strcat(dataToSend,txData.bpm);
+  strcat(dataToSend,",");
+  strcat(dataToSend,txData.code);
   Serial.println(dataToSend);
   sendMessage(dataToSend);
-  memset(txData.temp,'\0',strlen(txData.temp));
-  memset(txData.lng,'\0',strlen(txData.lng));
-  memset(txData.lat,'\0',strlen(txData.lat));
-  memset(txData.bpm,'\0',strlen(txData.bpm));
-  memset(dataToSend,'\0',strlen(dataToSend));   
+  memset(txData.temp,'\0',sizeof(txData.temp));
+  memset(txData.lng,'\0',sizeof(txData.lng));
+  memset(txData.lat,'\0',sizeof(txData.lat));
+  memset(txData.bpm,'\0',sizeof(txData.bpm));
+  memset(dataToSend,'\0',sizeof(dataToSend));   
 }
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200); 
+  txData.code[0] = '-';
+  txData.code[1] = '-';
+  txData.code[2] = '-';
+  txData.code[3] = '-';
   LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
   if (!LoRa.begin(433E6)) {            
     Serial.println("LoRa init failed. Check your connections.");
@@ -191,18 +276,26 @@ void setup() {
   particleSensor.setup(); //Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
   particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+  
+  buttonToNodeQueue = xQueueCreate(1,sizeof(txData.code));
   xTaskCreate(vGPS_Task,
                 "Task1",
                 200,
                 NULL,
                 tskIDLE_PRIORITY + 1,
                 NULL);
-  xTaskCreate(vNodeRx_Task,
+  xTaskCreate(vNode_Task,
               "Task2",
               200,
               NULL,
               tskIDLE_PRIORITY + 1,
-              NULL);
+              &nodeTaskHandle);
+  xTaskCreate(vButton_Task,
+              "Task3",
+              200,
+              NULL,
+              tskIDLE_PRIORITY + 1,
+              &buttonTaskHandle);
   vTaskStartScheduler();
 }
 
